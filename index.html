@@ -406,6 +406,123 @@
             background-color: #ccc;
             border-radius: 3px;
         }
+
+        /* Live Chat URL Display Styles */
+        .live-chat-url-container {
+            background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+            border: 2px solid var(--bgv-blue);
+            border-radius: 12px;
+            padding: 15px;
+            margin: 10px 0;
+            animation: slideIn 0.5s ease-out;
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .live-chat-url-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 10px;
+            color: var(--bgv-blue);
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .live-chat-url-box {
+            background: white;
+            border: 1px solid #90caf9;
+            border-radius: 8px;
+            padding: 10px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .live-chat-url-text {
+            flex: 1;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            color: var(--bgv-text);
+            word-break: break-all;
+            user-select: all;
+        }
+
+        .copy-url-btn {
+            background: var(--bgv-blue);
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .copy-url-btn:hover {
+            background: var(--bgv-light-blue);
+            transform: scale(1.05);
+        }
+
+        .copy-url-btn.copied {
+            background: #28a745;
+        }
+
+        .live-chat-url-info {
+            font-size: 12px;
+            color: #666;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .share-options {
+            display: flex;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .share-btn {
+            flex: 1;
+            background: white;
+            border: 1px solid #ddd;
+            padding: 8px;
+            border-radius: 6px;
+            font-size: 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            transition: all 0.2s;
+        }
+
+        .share-btn:hover {
+            background: #f5f5f5;
+            border-color: var(--bgv-blue);
+            color: var(--bgv-blue);
+        }
+
+        .url-qr-code {
+            text-align: center;
+            margin-top: 10px;
+            padding: 10px;
+            background: white;
+            border-radius: 8px;
+        }
+
+        .url-qr-code img {
+            max-width: 150px;
+            height: auto;
+        }
     </style>
 </head>
 <body>
@@ -541,6 +658,7 @@
         let signalingUnsubscribe = null;
         let roomId = null; // Dynamic room ID
         let connectionTimeout = null;
+        let liveChatUrl = null;
 
         // ==========================================
         // UI FUNCTIONS
@@ -650,6 +768,108 @@
             if (waitingMsg) {
                 waitingMsg.remove();
             }
+        }
+
+        // Function to display Live Chat URL
+        function displayLiveChatUrl() {
+            const chatBody = document.getElementById('chatBody');
+            const typingIndicator = document.getElementById('typingIndicator');
+            
+            // Generate the full URL for this chat session
+            const baseUrl = window.location.origin + window.location.pathname;
+            liveChatUrl = `${baseUrl}?room=${roomId}&mode=join`;
+            
+            const urlContainer = document.createElement('div');
+            urlContainer.className = 'live-chat-url-container';
+            urlContainer.id = 'liveChatUrlContainer';
+            
+            urlContainer.innerHTML = `
+                <div class="live-chat-url-header">
+                    <i class="bi bi-link-45deg"></i>
+                    <span>Your Live Chat Session</span>
+                </div>
+                <div class="live-chat-url-box">
+                    <span class="live-chat-url-text" id="chatUrlText">${liveChatUrl}</span>
+                    <button class="copy-url-btn" onclick="copyChatUrl()" id="copyUrlBtn">
+                        <i class="bi bi-clipboard"></i>
+                        <span>Copy</span>
+                    </button>
+                </div>
+                <div class="live-chat-url-info">
+                    <i class="bi bi-info-circle-fill"></i>
+                    <small>Share this link to invite others to join this chat session</small>
+                </div>
+                <div class="share-options">
+                    <button class="share-btn" onclick="shareViaEmail()">
+                        <i class="bi bi-envelope"></i>
+                        Email
+                    </button>
+                    <button class="share-btn" onclick="shareViaWhatsApp()">
+                        <i class="bi bi-whatsapp"></i>
+                        WhatsApp
+                    </button>
+                    <button class="share-btn" onclick="openInNewTab()">
+                        <i class="bi bi-box-arrow-up-right"></i>
+                        Open
+                    </button>
+                </div>
+            `;
+            
+            chatBody.insertBefore(urlContainer, typingIndicator);
+            scrollToBottom();
+        }
+
+        function removeLiveChatUrl() {
+            const urlContainer = document.getElementById('liveChatUrlContainer');
+            if (urlContainer) {
+                urlContainer.remove();
+            }
+        }
+
+        function copyChatUrl() {
+            const urlText = document.getElementById('chatUrlText').textContent;
+            const copyBtn = document.getElementById('copyUrlBtn');
+            
+            navigator.clipboard.writeText(urlText).then(() => {
+                copyBtn.classList.add('copied');
+                copyBtn.innerHTML = '<i class="bi bi-check2"></i><span>Copied!</span>';
+                
+                setTimeout(() => {
+                    copyBtn.classList.remove('copied');
+                    copyBtn.innerHTML = '<i class="bi bi-clipboard"></i><span>Copy</span>';
+                }, 2000);
+            }).catch(err => {
+                // Fallback for older browsers
+                const textArea = document.createElement('textarea');
+                textArea.value = urlText;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                
+                copyBtn.classList.add('copied');
+                copyBtn.innerHTML = '<i class="bi bi-check2"></i><span>Copied!</span>';
+                
+                setTimeout(() => {
+                    copyBtn.classList.remove('copied');
+                    copyBtn.innerHTML = '<i class="bi bi-clipboard"></i><span>Copy</span>';
+                }, 2000);
+            });
+        }
+
+        function shareViaEmail() {
+            const subject = encodeURIComponent('Join my BGV Support Live Chat');
+            const body = encodeURIComponent(`Hello,\n\nI'm currently in a live chat session with BGV Support. Join me using this link:\n\n${liveChatUrl}\n\nBest regards,\n${userData.name || 'BGV User'}`);
+            window.open(`mailto:?subject=${subject}&body=${body}`, '_blank');
+        }
+
+        function shareViaWhatsApp() {
+            const text = encodeURIComponent(`Join my BGV Support live chat: ${liveChatUrl}`);
+            window.open(`https://wa.me/?text=${text}`, '_blank');
+        }
+
+        function openInNewTab() {
+            window.open(liveChatUrl, '_blank');
         }
 
         function showTyping() {
@@ -870,6 +1090,9 @@
             // Generate unique room ID to avoid collisions
             roomId = 'room_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
             
+            // Display the live chat URL immediately so user can share it
+            displayLiveChatUrl();
+            
             // Configuration with STUN and TURN servers
             // IMPORTANT: Replace with your actual TURN server credentials for production
             const configuration = {
@@ -1018,6 +1241,7 @@
 
         function handleConnectionTimeout() {
             removeWaitingMessage();
+            removeLiveChatUrl();
             addMessage("We are unable to establish live connection at this moment. Our team will contact you shortly via email.", 'bot');
             if (!userData.emailSent) {
                 sendEmailNotification(DEPARTMENT_EMAILS['Support']);
@@ -1028,6 +1252,7 @@
         function handleConnectionFailure() {
             if (!isConnecting) return;
             removeWaitingMessage();
+            removeLiveChatUrl();
             addMessage("Connection failed. Please check your network or try again later.", 'bot');
             cleanupConnection();
         }
@@ -1054,6 +1279,9 @@
                 document.getElementById('liveBadge').classList.add('active');
                 document.getElementById('statusText').textContent = "Connected to Live Agent";
                 document.getElementById('statusDot').style.backgroundColor = "#2ecc71";
+                
+                // Update the URL container to show connected status
+                updateLiveChatUrlStatus('connected');
                 
                 addMessage("✅ You are now connected to a live verification specialist. How can we help you today?", 'bot');
             };
@@ -1084,6 +1312,18 @@
                     addMessage(event.data, 'bot');
                 }
             };
+        }
+
+        function updateLiveChatUrlStatus(status) {
+            const container = document.getElementById('liveChatUrlContainer');
+            if (!container) return;
+            
+            const header = container.querySelector('.live-chat-url-header');
+            if (status === 'connected') {
+                header.innerHTML = '<i class="bi bi-check-circle-fill" style="color: #28a745;"></i><span>Live Chat Active - Share this link</span>';
+                container.style.background = 'linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%)';
+                container.style.borderColor = '#28a745';
+            }
         }
 
         function endLiveChat() {
@@ -1133,6 +1373,7 @@
             }
             
             removeWaitingMessage();
+            removeLiveChatUrl();
             resetConnectionUI();
             
             addMessage("Chat ended. Thank you for contacting BGV Support.", 'bot');
@@ -1174,6 +1415,7 @@
             }
             
             roomId = null;
+            liveChatUrl = null;
         }
 
         function resetConnectionUI() {
@@ -1209,7 +1451,8 @@
                 support_issue: userData.supportIssue || 'N/A',
                 transcript: JSON.stringify(userData.transcript, null, 2),
                 time: new Date().toLocaleString(),
-                priority: userData.interest === 'Live Chat' || userData.interest === 'Support' ? 'HIGH' : 'NORMAL'
+                priority: userData.interest === 'Live Chat' || userData.interest === 'Support' ? 'HIGH' : 'NORMAL',
+                chat_url: liveChatUrl || 'N/A'
             };
 
             emailjs.send(EMAILJS_CONFIG.serviceID, EMAILJS_CONFIG.templateID, templateParams)
@@ -1226,11 +1469,29 @@
                 });
         }
 
+        // Check for room parameter on page load (for joining existing chats)
+        function checkForExistingRoom() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const roomParam = urlParams.get('room');
+            const modeParam = urlParams.get('mode');
+            
+            if (roomParam && modeParam === 'join') {
+                // This is a join link - you would implement agent-side logic here
+                console.log('Joining room:', roomParam);
+                // Implement join logic here
+            }
+        }
+
         // Cleanup on page unload
         window.addEventListener('beforeunload', () => {
             if (isLiveChat) {
                 endLiveChat();
             }
+        });
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            checkForExistingRoom();
         });
 
     </script>
