@@ -583,7 +583,7 @@
         </div>
     </div>
 
-    <!-- Firebase SDK - Use ONLY v9 compat or v8, not both -->
+    <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
     <!-- EmailJS SDK -->
@@ -593,10 +593,9 @@
 
     <script>
         // ==========================================
-        // CONFIGURATION (REPLACE WITH YOUR KEYS)
+        // CONFIGURATION - UPDATE THESE VALUES
         // ==========================================
         
-        // Your web app's Firebase configuration
         const firebaseConfig = {
             apiKey: "AIzaSyAt5Ot23TjRJKH-AKve-_-N2PPYRlrwvak",
             authDomain: "chat-bot-54653.firebaseapp.com",
@@ -608,21 +607,55 @@
 
         const EMAILJS_CONFIG = {
             serviceID: "service_5nvmfkd",
-            templateID: "template_34hdkc2",
+            templateID: "template_34hdkc2",  // Default template
             publicKey: "bJ-mwYr84eNmVqegR"
         };
 
-        // Department Email Mapping
+        // ==========================================
+        // DEPARTMENT EMAIL CONFIGURATION
+        // ==========================================
+        
+        // IMPORTANT: Update these with your actual department emails
         const DEPARTMENT_EMAILS = {
-            'Services': 'kovendan16@gmail.com',
-            'Support': 'kovendan16@gmail.com',
-            'Career': 'kovendan16@gmail.com',
-            'Live Chat': 'kovendan16@gmail.com',
-            'General': 'kovendan16@gmail.com'
+            'Services': 'kovendan16@gmail.com',      // Replace with actual email
+            'Support': 'support@bgv.com',        // Replace with actual email
+            'Career': 'careers@bgv.com',          // Replace with actual email
+            'Live Chat': 'livechat@bgv.com',      // Replace with actual email
+            'General': 'info@bgv.com',            // Replace with actual email
+            'default': 'kovendan16@gmail.com'     // Fallback email
         };
 
         // ==========================================
-        // INITIALIZATION - ONLY ONCE!
+        // STATE MANAGEMENT
+        // ==========================================
+        
+        let currentStep = 'GREETING';
+        let userData = {
+            name: '',
+            company: '',
+            email: '',
+            phone: '',
+            interest: '',
+            hiringVolume: '',
+            verificationType: '',
+            supportIssue: '',
+            transcript: [],
+            emailSent: false,
+            emailSentTo: []  // Track which departments were notified
+        };
+        
+        let chatModal;
+        let isLiveChat = false;
+        let isConnecting = false;
+        let peerConnection = null;
+        let dataChannel = null;
+        let signalingUnsubscribe = null;
+        let roomId = null;
+        let connectionTimeout = null;
+        let liveChatUrl = null;
+
+        // ==========================================
+        // INITIALIZATION
         // ==========================================
         
         // Initialize Firebase ONCE
@@ -633,32 +666,6 @@
 
         // Initialize EmailJS
         emailjs.init(EMAILJS_CONFIG.publicKey);
-
-        // ==========================================
-        // STATE MANAGEMENT
-        // ==========================================
-        let currentStep = 'GREETING';
-        let userData = {
-            name: '',
-            company: '',
-            email: '',
-            phone: '',
-            interest: '',
-            hiringVolume: '',
-            verificationType: '',
-            transcript: [],
-            emailSent: false
-        };
-        
-        let chatModal;
-        let isLiveChat = false;
-        let isConnecting = false;
-        let peerConnection = null;
-        let dataChannel = null;
-        let signalingUnsubscribe = null;
-        let roomId = null; // Dynamic room ID
-        let connectionTimeout = null;
-        let liveChatUrl = null;
 
         // ==========================================
         // UI FUNCTIONS
@@ -683,7 +690,6 @@
         }
 
         function closeChat() {
-            // If in live chat, confirm before closing
             if (isLiveChat && dataChannel && dataChannel.readyState === 'open') {
                 if (confirm('You are currently in a live chat session. Are you sure you want to close?')) {
                     endLiveChat();
@@ -721,10 +727,12 @@
                 chatBody.insertBefore(msgDiv, typingIndicator);
             }
 
+            // Add to transcript
             userData.transcript.push({
                 sender: sender,
-                text: text,
-                time: new Date().toISOString()
+                text: text.replace(/<[^>]*>/g, ''), // Strip HTML for transcript
+                time: new Date().toISOString(),
+                displayTime: time
             });
 
             scrollToBottom();
@@ -738,8 +746,8 @@
             notifDiv.className = 'email-notification';
             notifDiv.innerHTML = `
                 <i class="bi bi-envelope-check-fill"></i>
-                <strong>Notification Sent!</strong><br>
-                <small>${department} team has been notified via email and will assist you shortly.</small>
+                <strong>${department} Team Notified!</strong><br>
+                <small>An email has been sent to the ${department} department. They will contact you shortly.</small>
             `;
             
             chatBody.insertBefore(notifDiv, typingIndicator);
@@ -770,12 +778,10 @@
             }
         }
 
-        // Function to display Live Chat URL
         function displayLiveChatUrl() {
             const chatBody = document.getElementById('chatBody');
             const typingIndicator = document.getElementById('typingIndicator');
             
-            // Generate the full URL for this chat session
             const baseUrl = window.location.origin + window.location.pathname;
             liveChatUrl = `${baseUrl}?room=${roomId}&mode=join`;
             
@@ -839,7 +845,6 @@
                     copyBtn.innerHTML = '<i class="bi bi-clipboard"></i><span>Copy</span>';
                 }, 2000);
             }).catch(err => {
-                // Fallback for older browsers
                 const textArea = document.createElement('textarea');
                 textArea.value = urlText;
                 document.body.appendChild(textArea);
@@ -999,8 +1004,8 @@
                     case 'SERVICES_TYPE':
                         userData.verificationType = text;
                         addMessage("Thank you for the details. Our sales team will contact you shortly.");
-                        // Send email for services
-                        sendEmailNotification(DEPARTMENT_EMAILS['Services']);
+                        // Send email to Services department
+                        sendDepartmentEmail('Services');
                         setTimeout(showMainMenu, 3000);
                         break;
 
@@ -1036,9 +1041,9 @@
                 userData.interest = 'Career';
                 addMessage("You can view our open positions here:");
                 addMessage("<a href='https://yourcompany.com/careers' target='_blank'>https://yourcompany.com/careers</a>");
-                // Send email for career inquiries
-                sendEmailNotification(DEPARTMENT_EMAILS['Career']);
-                addEmailNotificationMessage('Careers');
+                // Send email to Career department
+                sendDepartmentEmail('Career');
+                addEmailNotificationMessage('Career');
                 setTimeout(showMainMenu, 4000);
             } else if (lower.includes('support')) {
                 userData.interest = 'Support';
@@ -1062,8 +1067,8 @@
         function handleSupportFlow(issue) {
             userData.supportIssue = issue;
             addMessage(`Noted: ${issue} issue. Connecting you to a specialist...`);
-            // Send email immediately when support is requested
-            sendEmailNotification(DEPARTMENT_EMAILS['Support']);
+            // Send email to Support department immediately
+            sendDepartmentEmail('Support');
             addEmailNotificationMessage('Support');
             initiateLiveChat();
         }
@@ -1073,13 +1078,154 @@
         }
 
         // ==========================================
-        // WEBRTC & FIREBASE SIGNALING - CORRECTED
+        // EMAIL NOTIFICATION SYSTEM
+        // ==========================================
+
+        /**
+         * Send email notification to specific department
+         * This is the key function that routes emails to correct departments
+         */
+        function sendDepartmentEmail(department) {
+            // Check if already sent to this department in this session
+            if (userData.emailSentTo.includes(department)) {
+                console.log(`Email already sent to ${department} department`);
+                return Promise.resolve();
+            }
+
+            const targetEmail = DEPARTMENT_EMAILS[department] || DEPARTMENT_EMAILS['default'];
+            
+            // Prepare comprehensive email parameters
+            const templateParams = {
+                // Recipient - THIS IS THE KEY VARIABLE
+                to_email: targetEmail,
+                
+                // Sender info
+                from_name: userData.name || 'Anonymous User',
+                from_email: userData.email || 'no-reply@bgv.com',
+                reply_to: userData.email || 'no-reply@bgv.com',
+                
+                // Company info
+                company_name: userData.company || 'Not provided',
+                phone_number: userData.phone || 'Not provided',
+                
+                // Department and priority
+                department: department,
+                priority: getPriorityLevel(department),
+                
+                // Specific details based on department
+                interest_area: userData.interest || 'General Inquiry',
+                hiring_volume: userData.hiringVolume || 'N/A',
+                verification_type: userData.verificationType || 'N/A',
+                support_issue: userData.supportIssue || 'N/A',
+                
+                // Chat context
+                conversation_id: roomId || `CONV_${Date.now()}`,
+                chat_transcript: formatTranscriptForEmail(),
+                chat_url: liveChatUrl || 'N/A',
+                
+                // Metadata
+                timestamp: new Date().toLocaleString(),
+                user_agent: navigator.userAgent,
+                page_url: window.location.href
+            };
+
+            console.log(`📧 Sending ${department} notification to:`, targetEmail);
+            console.log('📧 Template params:', templateParams);
+
+            return emailjs.send(EMAILJS_CONFIG.serviceID, EMAILJS_CONFIG.templateID, templateParams)
+                .then((response) => {
+                    console.log(`✅ ${department} email sent successfully:`, response.status);
+                    
+                    // Track that we sent to this department
+                    userData.emailSentTo.push(department);
+                    
+                    // Show confirmation in chat
+                    if (department !== 'Services') {
+                        addMessage(`✅ ${department} team has been notified and will contact you at ${userData.email}.`, 'bot');
+                    }
+                    
+                    return response;
+                })
+                .catch((error) => {
+                    console.error(`❌ Failed to send ${department} email:`, error);
+                    
+                    // Fallback: try sending to default email
+                    if (targetEmail !== DEPARTMENT_EMAILS['default']) {
+                        console.log('🔄 Attempting fallback to default email...');
+                        return sendFallbackEmail(department, templateParams);
+                    }
+                    
+                    addMessage(`⚠️ Unable to notify ${department} team automatically. Please contact us directly.`, 'bot');
+                    throw error;
+                });
+        }
+
+        /**
+         * Fallback email sender if department email fails
+         */
+        function sendFallbackEmail(originalDepartment, originalParams) {
+            const fallbackParams = {
+                ...originalParams,
+                to_email: DEPARTMENT_EMAILS['default'],
+                original_intended_department: originalDepartment,
+                fallback_notice: `This email was originally intended for ${originalDepartment} department but was sent to default due to delivery failure.`
+            };
+
+            return emailjs.send(EMAILJS_CONFIG.serviceID, EMAILJS_CONFIG.templateID, fallbackParams)
+                .then((response) => {
+                    console.log('✅ Fallback email sent successfully');
+                    addMessage(`✅ Notification sent to support team. They will route your request to the ${originalDepartment} department.`, 'bot');
+                    return response;
+                })
+                .catch((error) => {
+                    console.error('❌ Fallback email also failed:', error);
+                    addMessage("⚠️ Email notification system is currently unavailable. Please save this conversation and contact us directly.", 'bot');
+                    throw error;
+                });
+        }
+
+        /**
+         * Determine priority level based on department
+         */
+        function getPriorityLevel(department) {
+            const priorityMap = {
+                'Live Chat': 'URGENT',
+                'Support': 'HIGH',
+                'Services': 'MEDIUM',
+                'Career': 'LOW',
+                'General': 'NORMAL'
+            };
+            return priorityMap[department] || 'NORMAL';
+        }
+
+        /**
+         * Format chat transcript for email
+         */
+        function formatTranscriptForEmail() {
+            if (!userData.transcript || userData.transcript.length === 0) {
+                return 'No conversation history available.';
+            }
+
+            const header = `=== BGV Chat Transcript ===\n`;
+            const metadata = `User: ${userData.name} | Company: ${userData.company} | Email: ${userData.email}\n`;
+            const separator = `------------------------\n`;
+            
+            const messages = userData.transcript.map(msg => {
+                const time = msg.displayTime || new Date(msg.time).toLocaleTimeString();
+                const sender = msg.sender === 'bot' ? 'BGV Bot' : msg.sender === 'user' ? userData.name : 'System';
+                return `[${time}] ${sender}: ${msg.text}`;
+            }).join('\n');
+
+            return header + metadata + separator + messages;
+        }
+
+        // ==========================================
+        // WEBRTC LIVE CHAT SYSTEM
         // ==========================================
 
         async function initiateLiveChat() {
             isConnecting = true;
             
-            // Add waiting message with 2-minute warning
             addWaitingMessage();
             
             document.getElementById('statusText').textContent = "Connecting...";
@@ -1087,35 +1233,31 @@
 
             isLiveChat = true;
             
-            // Generate unique room ID to avoid collisions
+            // Generate unique room ID
             roomId = 'room_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
             
-            // Display the live chat URL immediately so user can share it
+            // Display shareable URL
             displayLiveChatUrl();
             
-            // Configuration with STUN and TURN servers
-            // IMPORTANT: Replace with your actual TURN server credentials for production
+            // Notify Live Chat department
+            sendDepartmentEmail('Live Chat').catch(err => {
+                console.log('Live chat notification failed, but continuing with connection...');
+            });
+
+            // WebRTC Configuration
             const configuration = {
                 iceServers: [
                     { urls: 'stun:stun.l.google.com:19302' },
-                    { urls: 'stun:stun1.l.google.com:19302' },
-                    // Add your TURN server here for production
-                    // {
-                    //     urls: 'turn:your-turn-server.com:3478',
-                    //     username: 'user',
-                    //     credential: 'pass'
-                    // }
+                    { urls: 'stun:stun1.l.google.com:19302' }
                 ],
                 iceCandidatePoolSize: 10
             };
             
             peerConnection = new RTCPeerConnection(configuration);
             
-            // Handle ICE connection state changes
             peerConnection.oniceconnectionstatechange = () => {
                 console.log('ICE Connection State:', peerConnection.iceConnectionState);
                 if (peerConnection.iceConnectionState === 'failed') {
-                    console.error('ICE Connection failed');
                     handleConnectionFailure();
                 } else if (peerConnection.iceConnectionState === 'disconnected') {
                     setTimeout(() => {
@@ -1127,7 +1269,6 @@
             };
 
             peerConnection.onconnectionstatechange = () => {
-                console.log('Connection State:', peerConnection.connectionState);
                 if (peerConnection.connectionState === 'failed') {
                     handleConnectionFailure();
                 }
@@ -1139,19 +1280,13 @@
             });
             setupDataChannel();
 
-            // Collect ICE candidates before sending offer (trickle ICE alternative)
-            const candidates = [];
+            // Handle ICE candidates
             peerConnection.onicecandidate = (event) => {
                 if (event.candidate) {
-                    candidates.push(event.candidate.toJSON());
-                    // Also send immediately for faster connection
                     db.collection('rooms').doc(roomId).collection('callerCandidates').add({
                         candidate: event.candidate.toJSON(),
                         timestamp: firebase.firestore.FieldValue.serverTimestamp()
                     }).catch(err => console.error('Error adding candidate:', err));
-                } else {
-                    // All candidates gathered, update offer with complete SDP
-                    console.log('All ICE candidates gathered');
                 }
             };
 
@@ -1159,7 +1294,7 @@
                 const offer = await peerConnection.createOffer();
                 await peerConnection.setLocalDescription(offer);
 
-                // Create room document with proper structure
+                // Create room in Firestore
                 const roomRef = db.collection('rooms').doc(roomId);
                 await roomRef.set({
                     offer: {
@@ -1171,39 +1306,24 @@
                     userInfo: {
                         name: userData.name,
                         email: userData.email,
-                        issue: userData.supportIssue || 'General'
+                        company: userData.company,
+                        issue: userData.supportIssue || 'General',
+                        department: 'Live Chat'
                     }
                 });
 
-                // Listen for answer
+                // Listen for answer from agent
                 signalingUnsubscribe = roomRef.onSnapshot(async (doc) => {
                     const data = doc.data();
                     if (!data) return;
                     
                     if (data.answer && !peerConnection.currentRemoteDescription) {
-                        console.log('Received answer, setting remote description');
                         try {
                             const rtcSessionDescription = new RTCSessionDescription(data.answer);
                             await peerConnection.setRemoteDescription(rtcSessionDescription);
-                            
-                            // Process any buffered candidates
-                            if (data.calleeCandidates) {
-                                data.calleeCandidates.forEach(async (cand) => {
-                                    try {
-                                        await peerConnection.addIceCandidate(new RTCIceCandidate(cand));
-                                    } catch (e) {
-                                        console.error('Error adding buffered candidate:', e);
-                                    }
-                                });
-                            }
                         } catch (err) {
                             console.error('Error setting remote description:', err);
                         }
-                    }
-                    
-                    // Check for connection status updates from agent
-                    if (data.status === 'connected' && isConnecting) {
-                        console.log('Agent connected to room');
                     }
                 });
 
@@ -1223,10 +1343,9 @@
                     });
                 });
 
-                // Store unsubscribe function for cleanup
                 window.calleeCandidatesUnsubscribe = calleeCandidatesUnsubscribe;
 
-                // 2-minute timeout for connection
+                // 2-minute connection timeout
                 connectionTimeout = setTimeout(() => {
                     if (isConnecting && (!dataChannel || dataChannel.readyState !== 'open')) {
                         handleConnectionTimeout();
@@ -1242,11 +1361,15 @@
         function handleConnectionTimeout() {
             removeWaitingMessage();
             removeLiveChatUrl();
-            addMessage("We are unable to establish live connection at this moment. Our team will contact you shortly via email.", 'bot');
-            if (!userData.emailSent) {
-                sendEmailNotification(DEPARTMENT_EMAILS['Support']);
+            addMessage("We couldn't establish a live connection at this moment. Our team has been notified and will contact you shortly.", 'bot');
+            
+            // Ensure support email was sent
+            if (!userData.emailSentTo.includes('Support')) {
+                sendDepartmentEmail('Support');
             }
+            
             cleanupConnection();
+            setTimeout(showMainMenu, 3000);
         }
 
         function handleConnectionFailure() {
@@ -1255,6 +1378,7 @@
             removeLiveChatUrl();
             addMessage("Connection failed. Please check your network or try again later.", 'bot');
             cleanupConnection();
+            setTimeout(showMainMenu, 3000);
         }
 
         function setupDataChannel() {
@@ -1280,9 +1404,7 @@
                 document.getElementById('statusText').textContent = "Connected to Live Agent";
                 document.getElementById('statusDot').style.backgroundColor = "#2ecc71";
                 
-                // Update the URL container to show connected status
                 updateLiveChatUrlStatus('connected');
-                
                 addMessage("✅ You are now connected to a live verification specialist. How can we help you today?", 'bot');
             };
 
@@ -1308,7 +1430,6 @@
                         addMessage(data.text, 'bot');
                     }
                 } catch (e) {
-                    // If not JSON, treat as plain text
                     addMessage(event.data, 'bot');
                 }
             };
@@ -1331,9 +1452,7 @@
             if (dataChannel) {
                 try {
                     dataChannel.close();
-                } catch (e) {
-                    console.error('Error closing data channel:', e);
-                }
+                } catch (e) {}
                 dataChannel = null;
             }
             
@@ -1341,9 +1460,7 @@
             if (peerConnection) {
                 try {
                     peerConnection.close();
-                } catch (e) {
-                    console.error('Error closing peer connection:', e);
-                }
+                } catch (e) {}
                 peerConnection = null;
             }
             
@@ -1364,7 +1481,7 @@
                 connectionTimeout = null;
             }
             
-            // Update room status if exists
+            // Update room status
             if (roomId) {
                 db.collection('rooms').doc(roomId).update({
                     status: 'ended',
@@ -1391,16 +1508,12 @@
             }
             
             if (dataChannel) {
-                try {
-                    dataChannel.close();
-                } catch (e) {}
+                try { dataChannel.close(); } catch (e) {}
                 dataChannel = null;
             }
             
             if (peerConnection) {
-                try {
-                    peerConnection.close();
-                } catch (e) {}
+                try { peerConnection.close(); } catch (e) {}
                 peerConnection = null;
             }
             
@@ -1429,56 +1542,17 @@
         }
 
         // ==========================================
-        // EMAILJS INTEGRATION
+        // UTILITY & INITIALIZATION
         // ==========================================
 
-        function sendEmailNotification(departmentEmail) {
-            // Prevent duplicate emails
-            if (userData.emailSent) {
-                console.log('Email already sent for this session');
-                return;
-            }
-
-            const templateParams = {
-                to_email: departmentEmail,
-                from_name: userData.name,
-                from_company: userData.company,
-                from_email: userData.email,
-                from_phone: userData.phone,
-                department: userData.interest || 'General',
-                hiring_volume: userData.hiringVolume || 'N/A',
-                verification_type: userData.verificationType || 'N/A',
-                support_issue: userData.supportIssue || 'N/A',
-                transcript: JSON.stringify(userData.transcript, null, 2),
-                time: new Date().toLocaleString(),
-                priority: userData.interest === 'Live Chat' || userData.interest === 'Support' ? 'HIGH' : 'NORMAL',
-                chat_url: liveChatUrl || 'N/A'
-            };
-
-            emailjs.send(EMAILJS_CONFIG.serviceID, EMAILJS_CONFIG.templateID, templateParams)
-                .then((response) => {
-                    console.log('Email sent successfully:', response.status, response.text);
-                    userData.emailSent = true;
-                    
-                    if (userData.interest !== 'Services') {
-                        addMessage("✅ Notification sent! Our team has been alerted and will assist you shortly.", 'bot');
-                    }
-                }, (error) => {
-                    console.error('Failed to send email:', error);
-                    addMessage("⚠️ There was an error sending the notification. Please try again or contact us directly.", 'bot');
-                });
-        }
-
-        // Check for room parameter on page load (for joining existing chats)
         function checkForExistingRoom() {
             const urlParams = new URLSearchParams(window.location.search);
             const roomParam = urlParams.get('room');
             const modeParam = urlParams.get('mode');
             
             if (roomParam && modeParam === 'join') {
-                // This is a join link - you would implement agent-side logic here
                 console.log('Joining room:', roomParam);
-                // Implement join logic here
+                // Implement agent join logic here
             }
         }
 
